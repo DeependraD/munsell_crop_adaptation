@@ -4,6 +4,7 @@
 require(tidyverse)
 # using munsell library
 library(munsell)
+library(munsellinterpol)
 
 # To begin with, one can check how the color palette of single hues (A sequential palette) looks like.
 # It might also strike as appropriate qualitative description of colorimetric features of plant world.
@@ -55,7 +56,9 @@ plot_mnsl_unlab <- function (cols, back.col = "white", ...)
   cols <- in_gamut(cols, ...)
   df <- data.frame(num = 1:length(cols), names = factor(cols, levels = c(unique(cols))), 
                    hex = mnsl2hex(cols), x = 0, 
-                   y = 0, stringsAsFactors = FALSE)
+                   y = 0, stringsAsFactors = FALSE) %>% 
+    mutate(hue = str_extract(names, "\\d+\\.*\\d*\\w"))
+    
   df$labels <- factor(df$names, levels = c(unique(cols), "NA"))
   df$labels[is.na(df$labels)] <- "NA"
   ggplot2::ggplot(data = df, ggplot2::aes(x = x, y = y)) + 
@@ -92,14 +95,18 @@ p + ggplot2::facet_wrap(~num, ncol = 12)
 # hues does not work with given values of V and C
 
 # all possible green hues (combinations of V and C) can be plotted as below
-g_hues <- expand.grid(c(2.5, 5, 7.5, 10), c("G"), " ", 0:10, "/", seq(0, 10, by = 2)) %>% 
+g_hues <- expand.grid(c(2.5, 5, 7.5, 10), c("G"), " ", 0:10, "/", seq(0, 24, by = 2)) %>% 
   tidyr::unite(paste, sep = "", remove = FALSE) %>% 
   rename("pasted_comb" = "paste")
 
 greenness_df <- expand.grid(c("H1", "H2", "H3", "H4"), 
             "Green", 
             c(paste("Dark", 5:1), "Medium bright", paste("Light", 1:5)), 
-            c("Desaturated", "Mildly desaturated", "Slightly desaturated", "Slightly saturated", "Mildly saturated", "Saturated")) %>% 
+            c("Fully desaturated", "Highly desaturated", "Mostly desaturated",
+              "Desaturated", "Mildly desaturated", "Slightly desaturated", 
+              "Medium saturation",
+              "Slightly saturated", "Mildly saturated", "Saturated", 
+              "Mostly saturated", "Highly saturated", "Fully saturated")) %>% 
   tidyr::unite(paste, sep = " ", remove = FALSE) %>% 
   rename("green_class" = "paste")
 
@@ -116,12 +123,12 @@ p$data <- p$data %>%
   left_join(g_hues[, c("pasted_comb", "green_class")], by = c("labels" = "pasted_comb"))
 
 p <- p +
-  geom_text(aes(label = str_wrap(green_class, 20), color = text_colour(as.character(names))), size = 2.0, nudge_y = -0.3)
+  geom_text(aes(label = str_wrap(green_class, 18), color = text_colour(as.character(names))), size = 1.8, nudge_y = -0.3)
 p <- p + 
   ggplot2::facet_wrap(~num, ncol = 12)
 # p
 
-ggsave("./g_hues.png", plot = p, width = 12, height = 8, units = "in")
+ggsave("./g_hues.png", plot = p, width = 14, height = 10, units = "in")
 
 # plotting in most human readable form
 my_blue <- "5PB 5/8"
@@ -138,3 +145,65 @@ p + ggplot2::facet_wrap(~ num, nrow = 1)
 # functional plotting of hues at different chromas (highest to lowest chroma saturation)
 p <- plot_mnsl(sapply(0:5, desaturate, col = "5PB 7/10"))
 p + ggplot2::facet_wrap(~ num, nrow = 1)
+
+# hue slice for given hue
+hslice <- function (hue.name = ..., back.col = "white") 
+{
+  ggplot2::ggplot(ggplot2::aes(x = factor(chroma), y = factor(value)), data = subset(munsell.map, hue %in% hue.name)) + 
+    ggplot2::geom_tile(ggplot2::aes(fill = hex), colour = back.col,size = 1) + 
+    ggplot2::geom_text(ggplot2::aes(label = name, colour = text_colour(name)), angle = 45, size = 2) + 
+    ggplot2::scale_colour_identity() + ggplot2::scale_x_discrete("Chroma") + 
+    ggplot2::scale_y_discrete("Value", expand = c(0.125, 0)) + 
+    ggplot2::scale_fill_identity() + 
+    ggplot2::facet_wrap(~hue)
+}
+
+
+## plotting hue variants of color sample
+## all possible green hues (combinations of V and C) can be plotted as below
+
+# color sample plotting: rose red sampling
+rgb2mnsl(173, 4, 37)
+rgb2mnsl(188, 6, 44)
+rgb2mnsl(188, 6, 44) %>% plot_mnsl()
+
+# more accurate representation
+RGBtoMunsell(c(188, 6, 44))
+RGBtoMunsell(c(173, 4, 37))
+
+hue_slice("7.5R")
+
+r_hues <- expand.grid(c(2.5, 5, 7.5, 10), c("R"), " ", 0:10, "/", seq(0, 24, by = 2)) %>% 
+  tidyr::unite(paste, sep = "", remove = FALSE) %>% 
+  rename("pasted_comb" = "paste")
+
+redness_df <- expand.grid(c("H1", "H2", "H3", "H4"), 
+                            "Red", 
+                            c(paste("Dark", 5:1), "Medium bright", paste("Light", 1:5)), 
+                            c("Fully desaturated", "Highly desaturated", "Mostly desaturated",
+                              "Desaturated", "Mildly desaturated", "Slightly desaturated", 
+                              "Medium saturation",
+                              "Slightly saturated", "Mildly saturated", "Saturated", 
+                              "Mostly saturated", "Highly saturated", "Fully saturated")) %>% 
+  tidyr::unite(paste, sep = " ", remove = FALSE) %>% 
+  rename("red_class" = "paste")
+
+r_hues$red_class <- redness_df$red_class
+p <- r_hues %>% 
+  mutate(pasted_comb_hex = mnsl(pasted_comb)) %>% 
+  na.omit() %>% 
+  # arrange(pasted_comb) %>% 
+  pull(pasted_comb) %>% 
+  # plot_mnsl() %>% 
+  plot_mnsl_unlab()
+
+p$data <- p$data %>% 
+  left_join(r_hues[, c("pasted_comb", "red_class")], by = c("labels" = "pasted_comb"))
+
+p <- p +
+  geom_text(aes(label = str_wrap(red_class, 18), color = text_colour(as.character(names))), size = 1.6, nudge_y = -0.3)
+p <- p + 
+  ggplot2::facet_wrap(~num, ncol = 12)
+# p
+
+ggsave("./r_hues.png", plot = p, width = 14, height = 10, units = "in")
